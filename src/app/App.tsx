@@ -1,7 +1,7 @@
 import { useAtomSet, useAtomValue } from "@effect/atom-react"
 import { decodePasteBytes } from "@opentui/core"
 import { useKeyboard, usePaste, useRenderer, useTerminalDimensions } from "@opentui/react"
-import { useEffect } from "react"
+import { useEffect, useState } from "react"
 import { emptyEntry, entryFields, entryLabels } from "../domain.js"
 import { addEntry, copySelected, copySelectedUsername, deleteSelected, duplicateSelected, initialize, moveSelectedToGroup, openSelectedWebsite, quit, renameSelected, unlock, updateSelectedEntry } from "./actions.js"
 import { appState, groupsFor, selectedEntry, visibleEntries } from "./state.js"
@@ -18,6 +18,7 @@ const colors = {
 }
 
 export const App = () => {
+  const [helpOpen, setHelpOpen] = useState(false)
   const state = useAtomValue(appState)
   const setState = useAtomSet(appState)
   const runInitialize = useAtomSet(initialize)
@@ -45,6 +46,19 @@ export const App = () => {
     if (state.quitting) renderer.destroy()
   }, [renderer, state.quitting])
 
+  useEffect(() => {
+    const notification = state.notification
+    if (!notification) return
+    const timer = setTimeout(() => {
+      setState((current) =>
+        current.notification?.id === notification.id
+          ? { ...current, notification: null }
+          : current
+      )
+    }, 2800)
+    return () => clearTimeout(timer)
+  }, [setState, state.notification])
+
   usePaste((event) => {
     const pasted = decodePasteBytes(event.bytes).replace(/[\r\n]/g, "")
     if (!pasted) return
@@ -66,6 +80,15 @@ export const App = () => {
 
     if (key.ctrl && key.name === "c") {
       runQuit(undefined)
+      return
+    }
+    if (key.ctrl && key.name === "h" && state.screen === "unlocked") {
+      setHelpOpen((open) => !open)
+      return
+    }
+    if (helpOpen && state.screen === "unlocked") {
+      if (key.name === "escape") setHelpOpen(false)
+      else if (key.name === "q") runQuit(undefined)
       return
     }
     if (key.ctrl && key.name === "u") {
@@ -287,6 +310,33 @@ export const App = () => {
             {state.error ? <text fg={colors.error}>{state.error}</text> : null}
           </box>
         </box>
+      ) : helpOpen ? (
+        <box flexGrow={1} alignItems="center" justifyContent="center">
+          <box
+            width={Math.min(68, width - 6)}
+            border
+            borderColor={colors.accent}
+            backgroundColor={colors.panel}
+            padding={2}
+            flexDirection="column"
+            gap={1}
+          >
+            <text fg={colors.accent}><strong>Keyboard shortcuts</strong></text>
+            <text fg={colors.text}>j / k or ↑ / ↓   Navigate entries</text>
+            <text fg={colors.text}>h / l or ← / →   Switch group</text>
+            <text fg={colors.text}>a                 Add entry</text>
+            <text fg={colors.text}>e                 Edit entry</text>
+            <text fg={colors.text}>c                 Duplicate entry</text>
+            <text fg={colors.text}>r                 Rename entry</text>
+            <text fg={colors.text}>g                 Move to a group</text>
+            <text fg={colors.text}>o                 Open website</text>
+            <text fg={colors.text}>u / y             Copy username / password</text>
+            <text fg={colors.text}>d                 Delete entry</text>
+            <text fg={colors.text}>v / Space         Reveal or hide password</text>
+            <text fg={colors.text}>q / Ctrl+C        Quit</text>
+            <text fg={colors.muted}>Ctrl+H or Esc closes help</text>
+          </box>
+        </box>
       ) : (
         <box flexGrow={1} flexDirection="column">
           <box height={2} flexDirection="row" gap={1}>
@@ -332,9 +382,21 @@ export const App = () => {
       )}
 
       {state.screen === "unlocked" ? (
-        <box height={2} flexDirection="column">
+        state.notification ? (
+          <box
+            height={3}
+            border
+            borderColor={state.notification.type === "error" ? colors.error : colors.accent}
+            backgroundColor={colors.panel}
+            paddingLeft={1}
+            justifyContent="center"
+          >
+            <text fg={state.notification.type === "error" ? colors.error : colors.accent}>
+              {state.notification.type === "error" ? "!" : "✓"} {state.notification.message}
+            </text>
+          </box>
+        ) : <box height={1}>
           <text fg={state.error ? colors.error : colors.muted}>{state.error ?? state.status}</text>
-          <text fg={colors.muted}>j/k navigate · h/l group · a add · e edit · c duplicate · r rename · g group · o open · u username · y password · d delete · v reveal · q quit</text>
         </box>
       ) : null}
     </box>

@@ -23,9 +23,29 @@ export interface AppState {
   readonly addField: EntryField
   readonly status: string
   readonly error: string | null
+  readonly notification: Notification | null
   readonly quitting: boolean
   readonly masterPassword: string
 }
+
+export interface Notification {
+  readonly id: number
+  readonly message: string
+  readonly type: "success" | "error"
+}
+
+let notificationId = 0
+
+export const withNotification = (
+  state: AppState,
+  message: string,
+  type: Notification["type"] = "success"
+): AppState => ({
+  ...state,
+  status: message,
+  error: type === "error" ? message : null,
+  notification: { id: ++notificationId, message, type }
+})
 
 export const allGroupsFilter = "All groups"
 
@@ -41,6 +61,7 @@ export const initialState: AppState = {
   addField: "title",
   status: "Loading vault…",
   error: null,
+  notification: null,
   quitting: false,
   masterPassword: ""
 }

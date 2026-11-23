@@ -7,7 +7,7 @@ import { Browser } from "../services/Browser.js"
 import { Clipboard } from "../services/Clipboard.js"
 import { Keychain } from "../services/Keychain.js"
 import { Vault } from "../services/Vault.js"
-import { allGroupsFilter, appState, groupsFor, selectedEntry, visibleEntries } from "./state.js"
+import { allGroupsFilter, appState, groupsFor, selectedEntry, visibleEntries, withNotification } from "./state.js"
 
 export const appLayer = Layer.mergeAll(
   Vault.layer(join(homedir(), ".config", "pwd-manager", "vault.json")),
@@ -25,13 +25,11 @@ const setError = (get: Atom.FnContext, error: unknown) =>
   Effect.sync(() => {
     const state = get(appState)
     const message = messageOf(error)
-    get.set(appState, {
+    get.set(appState, withNotification({
       ...state,
       ...(state.screen === "loading" ? { screen: "master-password" as const } : {}),
-      ...(state.screen === "master-password" ? { input: "" } : {}),
-      status: message,
-      error: message
-    })
+      ...(state.screen === "master-password" ? { input: "" } : {})
+    }, message, "error"))
   })
 
 export const initialize = appRuntime.fn<void>()((_, get) =>
@@ -44,16 +42,14 @@ export const initialize = appRuntime.fn<void>()((_, get) =>
     if (vaultExists && savedPassword) {
       const opened = yield* vault.open(savedPassword).pipe(Effect.exit)
       if (Exit.isSuccess(opened)) {
-        get.set(appState, {
+        get.set(appState, withNotification({
           ...state,
           screen: "unlocked",
           vaultExists: true,
           entries: opened.value,
           input: "",
-          error: null,
-          status: "Vault unlocked from OS keychain",
           masterPassword: savedPassword
-        })
+        }, "Vault unlocked from OS keychain"))
         return
       }
       yield* keychain.delete().pipe(Effect.catch(() => Effect.void))
@@ -85,17 +81,16 @@ export const unlock = appRuntime.fn<string>()((password, get) =>
       Effect.as(true),
       Effect.catch(() => Effect.succeed(false))
     )
-    get.set(appState, {
+    const message = saved
+      ? state.vaultExists ? "Vault unlocked · password saved in OS keychain" : "Vault created · password saved in OS keychain"
+      : state.vaultExists ? "Vault unlocked" : "Encrypted vault created"
+    get.set(appState, withNotification({
       ...state,
       screen: "unlocked",
       entries,
       input: "",
-      error: null,
-      status: saved
-        ? state.vaultExists ? "Vault unlocked · password saved in OS keychain" : "Vault created · password saved in OS keychain"
-        : state.vaultExists ? "Vault unlocked" : "Encrypted vault created",
       masterPassword: password
-    })
+    }, message))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -106,7 +101,7 @@ export const addEntry = appRuntime.fn<Entry>()((entry, get) =>
     const entries = [...state.entries, groupedEntry]
     const vault = yield* Vault
     yield* vault.save(entries, state.masterPassword)
-    get.set(appState, {
+    get.set(appState, withNotification({
       ...state,
       screen: "unlocked",
       entries,
@@ -114,10 +109,8 @@ export const addEntry = appRuntime.fn<Entry>()((entry, get) =>
       selected: entries.length - 1,
       addEntry: emptyEntry(),
       addField: entryFields[0],
-      input: "",
-      status: "Entry added",
-      error: null
-    })
+      input: ""
+    }, `Created “${groupedEntry.title}”`))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -139,16 +132,14 @@ export const updateSelectedEntry = appRuntime.fn<Entry>()((updatedEntry, get) =>
     const nextState = { ...state, entries, groupFilter }
     const vault = yield* Vault
     yield* vault.save(entries, state.masterPassword)
-    get.set(appState, {
+    get.set(appState, withNotification({
       ...nextState,
       screen: "unlocked",
       selected: Math.max(0, visibleEntries(nextState).indexOf(updated)),
       addEntry: emptyEntry(),
       addField: entryFields[0],
-      input: "",
-      status: "Entry updated",
-      error: null
-    })
+      input: ""
+    }, `Updated “${updated.title}”`))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -165,13 +156,11 @@ export const deleteSelected = appRuntime.fn<void>()((_, get) =>
       ? allGroupsFilter
       : state.groupFilter
     const nextState = { ...state, entries, groupFilter }
-    get.set(appState, {
+    get.set(appState, withNotification({
       ...nextState,
       screen: "unlocked",
-      selected: Math.max(0, Math.min(state.selected, visibleEntries(nextState).length - 1)),
-      status: "Entry deleted",
-      error: null
-    })
+      selected: Math.max(0, Math.min(state.selected, visibleEntries(nextState).length - 1))
+    }, `Deleted “${selected.title}”`))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -186,14 +175,12 @@ export const moveSelectedToGroup = appRuntime.fn<string>()((groupName, get) =>
     const vault = yield* Vault
     yield* vault.save(entries, state.masterPassword)
     const nextState = { ...state, entries, groupFilter: group }
-    get.set(appState, {
+    get.set(appState, withNotification({
       ...nextState,
       screen: "unlocked",
       selected: Math.max(0, visibleEntries(nextState).indexOf(moved)),
-      input: "",
-      status: `Moved to ${group}`,
-      error: null
-    })
+      input: ""
+    }, `Moved “${selected.title}” to ${group}`))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -211,14 +198,12 @@ export const renameSelected = appRuntime.fn<string>()((title, get) =>
     const entries = state.entries.map((entry) => entry === selected ? renamed : entry)
     const vault = yield* Vault
     yield* vault.save(entries, state.masterPassword)
-    get.set(appState, {
+    get.set(appState, withNotification({
       ...state,
       screen: "unlocked",
       entries,
       input: "",
-      error: null,
-      status: "Entry renamed"
-    })
+    }, `Renamed to “${renamed.title}”`))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -239,13 +224,11 @@ export const duplicateSelected = appRuntime.fn<void>()((_, get) =>
     const vault = yield* Vault
     yield* vault.save(entries, state.masterPassword)
     const nextState = { ...state, entries }
-    get.set(appState, {
+    get.set(appState, withNotification({
       ...nextState,
       screen: "unlocked",
-      selected: visibleEntries(nextState).length - 1,
-      status: `Created “${title}”`,
-      error: null
-    })
+      selected: visibleEntries(nextState).length - 1
+    }, `Created “${title}”`))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -256,7 +239,7 @@ export const copySelected = appRuntime.fn<void>()((_, get) =>
     if (!selected) return
     const clipboard = yield* Clipboard
     yield* clipboard.copy(selected.password)
-    get.set(appState, { ...state, status: "Password copied · clipboard clears in 30s", error: null })
+    get.set(appState, withNotification(state, "Password copied · clipboard clears in 30s"))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -270,7 +253,7 @@ export const copySelectedUsername = appRuntime.fn<void>()((_, get) =>
     }
     const clipboard = yield* Clipboard
     yield* clipboard.copy(selected.username)
-    get.set(appState, { ...state, status: "Username copied · clipboard clears in 30s", error: null })
+    get.set(appState, withNotification(state, "Username copied · clipboard clears in 30s"))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 
@@ -284,7 +267,7 @@ export const openSelectedWebsite = appRuntime.fn<void>()((_, get) =>
     }
     const browser = yield* Browser
     yield* browser.open(selected.url.trim())
-    get.set(appState, { ...state, status: "Opened website", error: null })
+    get.set(appState, withNotification(state, "Opened website"))
   }).pipe(Effect.catch((error) => setError(get, error)))
 )
 

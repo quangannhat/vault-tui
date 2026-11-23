@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "bun --watch src/main.tsx",
     "start": "bun src/main.tsx",
+    "install:cli": "bun scripts/install-cli.ts",
     "typecheck": "tsc --noEmit",
     "prepare": "effect-language-service patch"
   },

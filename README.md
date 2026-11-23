@@ -8,8 +8,12 @@ password using scrypt.
 
 ```sh
 bun install
-bun run dev
+bun run install:cli
+vault
 ```
+
+The installer creates `~/.local/bin/vault`, which launches the TUI from any
+working directory. Ensure `~/.local/bin` is on your `PATH`.
 
 On first run, create a master password of at least 12 characters. Later runs
 prompt to unlock the vault unless the password is available in the OS keychain.
@@ -33,7 +37,8 @@ Keys:
 - Clipboard contents are cleared after 30 seconds.
 - `o`: open the selected entry's website in your browser
 - `v` or Space: reveal/hide the selected password
-- `q` or Esc: quit
+- `q` or Ctrl+C: quit
+- Ctrl+H: toggle the keyboard-shortcuts help modal
 
 Text fields accept terminal paste (usually Ctrl+Shift+V). Press Ctrl+U to clear
 the current field.
